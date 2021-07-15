@@ -1,4 +1,4 @@
-module mbti
+module github.com/tmaxmax/mbti
 
 go 1.16
 
