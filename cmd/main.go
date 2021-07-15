@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -14,6 +15,11 @@ import (
 )
 
 func main() {
+	exitCode := 0
+	defer func() {
+		os.Exit(exitCode)
+	}()
+
 	instantOutput := flag.Bool("instantOutput", false, "True if you want output to be shown instantly, without a typewriter-like effect")
 
 	flag.Parse()
@@ -32,7 +38,10 @@ func main() {
 		var input string
 		_, err := fmt.Scanln(&input)
 		if err != nil {
-			log.Fatalln("Input error:", err)
+			fmt.Println("Input error:", err)
+			exitCode = 1
+
+			return
 		}
 
 		if input == "exit" {
@@ -59,7 +68,7 @@ func main() {
 }
 
 func personalityFromInput(input string) (*mbti.Personality, error) {
-	if mbti.FunctionsCountInString(input) == 2 {
+	if mbti.FunctionCountInString(input) == 2 {
 		functions, _ := mbti.FunctionsFromString(input)
 
 		return mbti.FromDominantFunctions(functions[0], functions[1])

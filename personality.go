@@ -16,10 +16,10 @@ type Personality struct {
 
 func (p *Personality) Unconscious() *Personality {
 	return &Personality{
-		primary:   p.primary.InvertFocus(),
-		auxiliary: p.auxiliary.InvertFocus(),
-		tertiary:  p.tertiary.InvertFocus(),
-		inferior:  p.inferior.InvertFocus(),
+		primary:   p.primary.invertFocus(),
+		auxiliary: p.auxiliary.invertFocus(),
+		tertiary:  p.tertiary.invertFocus(),
+		inferior:  p.inferior.invertFocus(),
 	}
 }
 
@@ -33,12 +33,7 @@ func (p *Personality) Subconscious() *Personality {
 }
 
 func (p *Personality) SuperEgo() *Personality {
-	return &Personality{
-		primary:   p.inferior.InvertFocus(),
-		auxiliary: p.tertiary.InvertFocus(),
-		tertiary:  p.auxiliary.InvertFocus(),
-		inferior:  p.primary.InvertFocus(),
-	}
+	return p.Subconscious().Unconscious()
 }
 
 func (p *Personality) String() string {
@@ -79,7 +74,15 @@ func (p *Personality) Functions() []Function {
 
 var ErrInvalidFunctions = errors.New("invalid functions")
 
-func fromValidDominantFunctions(primary, auxiliary Function) *Personality {
+func FromDominantFunctions(primary, auxiliary Function) (*Personality, error) {
+	if !isValidFunction(primary) || !isValidFunction(auxiliary) {
+		return nil, ErrInvalidFunctions
+	}
+
+	if primary.focus == auxiliary.focus || primary.IsJudging() == auxiliary.IsJudging() {
+		return nil, fmt.Errorf("%w: primary %q and auxiliary %q can't form a personality type", ErrInvalidFunctions, primary.String(), auxiliary.String())
+	}
+
 	return &Personality{
 		primary:   primary,
 		auxiliary: auxiliary,
@@ -91,38 +94,26 @@ func fromValidDominantFunctions(primary, auxiliary Function) *Personality {
 			focus: auxiliary.focus,
 			kind:  invertKind(primary.kind),
 		},
-	}
-}
-
-func FromDominantFunctions(primary, auxiliary Function) (*Personality, error) {
-	if !isValidFunction(&primary) || !isValidFunction(&auxiliary) {
-		return nil, ErrInvalidFunctions
-	}
-
-	if primary.focus == auxiliary.focus || primary.IsJudging() == auxiliary.IsJudging() {
-		return nil, fmt.Errorf("%w: primary %q and auxiliary %q can't form a personality type", ErrInvalidFunctions, primary.String(), auxiliary.String())
-	}
-
-	return fromValidDominantFunctions(primary, auxiliary), nil
+	}, nil
 }
 
 var ErrInvalidIndicatorString = errors.New("invalid indicator string")
 
-func getIndicatorRunes(indicator string) (rune, rune, rune, rune, error) {
+func getIndicatorRunes(indicator string) (focusRune rune, perceivingRune rune, judgingRune rune, tacticsRune rune, err error) {
 	if strings.HasSuffix(indicator, "-A") || strings.HasSuffix(indicator, "-T") {
 		indicator = indicator[:len(indicator)-2]
 	}
 
 	if len(indicator) != 4 {
-		return 0, 0, 0, 0, fmt.Errorf("%w %q", ErrInvalidIndicatorString, indicator)
+		err = fmt.Errorf("%w %q", ErrInvalidIndicatorString, indicator)
+	} else {
+		focusRune = unicode.ToUpper(rune(indicator[0]))
+		perceivingRune = unicode.ToUpper(rune(indicator[1]))
+		judgingRune = unicode.ToUpper(rune(indicator[2]))
+		tacticsRune = unicode.ToUpper(rune(indicator[3]))
 	}
 
-	focusRune := unicode.ToUpper(rune(indicator[0]))
-	perceivingRune := unicode.ToUpper(rune(indicator[1]))
-	judgingRune := unicode.ToUpper(rune(indicator[2]))
-	tacticsRune := unicode.ToUpper(rune(indicator[3]))
-
-	return focusRune, perceivingRune, judgingRune, tacticsRune, nil
+	return
 }
 
 func IsIndicatorString(indicator string) bool {
@@ -130,8 +121,8 @@ func IsIndicatorString(indicator string) bool {
 
 	return err == nil &&
 		(focusRune == focusInternal || focusRune == focusExternal) &&
-		(perceivingRune == kindIntuition || perceivingRune == kindSensation) &&
-		(judgingRune == kindThinking || judgingRune == kindFeeling) &&
+		(perceivingRune == KindIntuition || perceivingRune == KindSensation) &&
+		(judgingRune == KindThinking || judgingRune == KindFeeling) &&
 		(tacticsRune == tacticJudging || tacticsRune == tacticProspecting)
 }
 
