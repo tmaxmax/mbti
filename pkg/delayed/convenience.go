@@ -2,23 +2,25 @@ package delayed
 
 import "time"
 
-// Write creates a delayed utility with a write operation queued.
-func Write(text string, duration time.Duration) *delayed {
-	return New().Write(text, duration)
+// Write creates a Delayed utility with a write operation queued.
+func Write(format string, args ...interface{}) *Delayed {
+	return New().Write(format, args...)
 }
 
-// Wait creates a delayed utility with a wait operation queued.
-func Wait(duration time.Duration) *delayed {
+// Wait creates a Delayed utility with a wait operation queued.
+// See Delayed.Write.
+func Wait(duration time.Duration) *Delayed {
 	return New().Wait(duration)
 }
 
-// DoWrite executes a write operation using a newly created delayed utility.
-func DoWrite(text string, duration time.Duration) chan error {
-	return Write(text, duration).Do()
+// DoWrite executes a write operation using a newly created Delayed utility.
+// See Delayed.Write.
+func DoWrite(format string, args ...interface{}) <-chan error {
+	return Write(format, args...).Do()
 }
 
 // DoWait executes a single wait operation.
-func DoWait(duration time.Duration) chan error {
+func DoWait(duration time.Duration) <-chan error {
 	e := make(chan error)
 	op := waitOperation{Duration: duration}
 

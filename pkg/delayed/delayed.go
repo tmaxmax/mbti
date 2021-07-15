@@ -1,7 +1,7 @@
 /*
-Package delayed provides a utility that is used to
+Package Delayed provides a utility that is used to
 print text to console with a 'typewriter' effect -
-letters are printed sequentially in a delayed manner.
+letters are printed sequentially in a Delayed manner.
 
 It uses an asynchronous API based on channels so the
 caller goroutine isn't blocked.
@@ -10,6 +10,7 @@ package delayed
 
 import (
 	"errors"
+	"fmt"
 	"github.com/rivo/uniseg"
 	"io"
 	"os"
@@ -17,7 +18,7 @@ import (
 	"time"
 )
 
-// Properties is used to customize the behavior of the delayed utility.
+// Properties is used to customize the behavior of the Delayed utility.
 type Properties struct {
 	// The writer the Write operations write to. Defaults to os.Stdout.
 	Writer io.StringWriter
@@ -29,10 +30,9 @@ type Properties struct {
 	IgnoreDelays bool
 }
 
-
-type delayed struct {
+type Delayed struct {
 	properties Properties
-	operations    []operation
+	operations []operation
 
 	mu sync.Mutex
 }
@@ -41,7 +41,7 @@ var defaultProperties = Properties{
 	Writer: os.Stdout,
 }
 
-// New creates a delayed utility. Customize it using
+// New creates a Delayed utility. Customize it using
 // the Properties struct. Note that the underlying writer
 // defaults to os.Stdout and if nil is given as a writer
 // it is set back to os.Stdout.
@@ -55,7 +55,7 @@ var defaultProperties = Properties{
 //
 // It is safe for concurrent use (no more than one goroutine can access it) and
 // it can be used for multiple executions.
-func New(properties ...Properties) *delayed {
+func New(properties ...Properties) *Delayed {
 	props := defaultProperties
 	if len(properties) > 0 {
 		props = properties[0]
@@ -65,16 +65,16 @@ func New(properties ...Properties) *delayed {
 		props.Writer = defaultProperties.Writer
 	}
 
-	return &delayed{properties: props}
+	return &Delayed{properties: props}
 }
 
-func (d *delayed) pushWaitOperation(duration time.Duration) {
-	if !d.properties.IgnoreDelays {
+func (d *Delayed) pushWaitOperation(duration time.Duration) {
+	if !d.properties.IgnoreDelays && duration != 0 {
 		d.operations = append(d.operations, &waitOperation{Duration: duration})
 	}
 }
 
-func (d *delayed) pushPrintOperation(text string) {
+func (d *Delayed) pushPrintOperation(text string) {
 	d.operations = append(d.operations, &writeOperation{Text: text, Writer: d.properties.Writer})
 }
 
@@ -89,7 +89,7 @@ func getDuration(input []time.Duration, defaultDuration time.Duration) time.Dura
 // Wait appends a wait operation for execution.
 //
 // The Wait operation is putting the executing goroutine to sleep for the given duration.
-func (d *delayed) Wait(waitDuration ...time.Duration) *delayed {
+func (d *Delayed) Wait(waitDuration ...time.Duration) *Delayed {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -103,17 +103,36 @@ func (d *delayed) Wait(waitDuration ...time.Duration) *delayed {
 	return d
 }
 
+func popDuration(args []interface{}, defaultDuration time.Duration) (time.Duration, []interface{}) {
+	argsCount := len(args)
+
+	if argsCount > 0 {
+		lastArg, ok := args[argsCount-1].(time.Duration)
+		if ok {
+			return lastArg, args[:argsCount-1]
+		}
+	}
+
+	return defaultDuration, args
+}
+
 // Write appends a print operation for execution.
 //
 // The Write operations is writing to the given writer each grapheme of the
 // text with a delay between each other. printDuration is the duration of the
 // whole print operation - the delay between each grapheme is the quotient of
 // the division of the total duration with the grapheme count of the text.
-func (d *delayed) Write(text string, printDuration ...time.Duration) *delayed {
+//
+// The first argument of this function is a format string for fmt.Sprintf.
+// The rest are used as format arguments. If a time.Duration is passed as the last
+// argument it is then used as the print duration.
+func (d *Delayed) Write(format string, args ...interface{}) *Delayed {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	d.properties.PrintDuration = getDuration(printDuration, d.properties.PrintDuration)
+	d.properties.PrintDuration, args = popDuration(args, d.properties.PrintDuration)
+	text := fmt.Sprintf(format, args...)
+
 	if d.properties.PrintDuration == 0 || d.properties.IgnoreDelays {
 		d.pushPrintOperation(text)
 
@@ -143,9 +162,9 @@ func (d *delayed) Write(text string, printDuration ...time.Duration) *delayed {
 // Use the returned channel to wait for the execution to finish and check
 // for eventual write errors.
 // Use the cancel channel to stop the execution before it finishes.
-func (d *delayed) Do(cancel ...chan struct{}) chan error {
+func (d *Delayed) Do(cancel ...<-chan struct{}) <-chan error {
 	errChan := make(chan error)
-	var cancelChan chan struct{}
+	var cancelChan <-chan struct{}
 	if len(cancel) > 0 {
 		cancelChan = cancel[0]
 	}
@@ -161,7 +180,7 @@ func (d *delayed) Do(cancel ...chan struct{}) chan error {
 					errChan <- err
 				}
 
-				return
+				break
 			}
 		}
 
@@ -174,7 +193,7 @@ func (d *delayed) Do(cancel ...chan struct{}) chan error {
 }
 
 // IgnoreDelays gets or sets Properties.IgnoreDelays.
-func (d *delayed) IgnoreDelays(new ...bool) bool {
+func (d *Delayed) IgnoreDelays(new ...bool) bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -188,7 +207,7 @@ func (d *delayed) IgnoreDelays(new ...bool) bool {
 }
 
 // Writer gets or sets Properties.Writer.
-func (d *delayed) Writer(new ...io.StringWriter) io.StringWriter {
+func (d *Delayed) Writer(new ...io.StringWriter) io.StringWriter {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -202,7 +221,7 @@ func (d *delayed) Writer(new ...io.StringWriter) io.StringWriter {
 }
 
 // WaitDuration gets or sets Properties.WaitDuration.
-func (d *delayed) WaitDuration(new ...time.Duration) time.Duration {
+func (d *Delayed) WaitDuration(new ...time.Duration) time.Duration {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -216,7 +235,7 @@ func (d *delayed) WaitDuration(new ...time.Duration) time.Duration {
 }
 
 // PrintDuration gets or sets Properties.PrintDuration.
-func (d *delayed) PrintDuration(new ...time.Duration) time.Duration {
+func (d *Delayed) PrintDuration(new ...time.Duration) time.Duration {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
